@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jacobi & Gauss-Seidel Calculator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+.katex-display { margin: 0.5em 0; overflow-x: auto; overflow-y: hidden; padding-bottom: 5px; }
+table { border-collapse: collapse; width: 100%; text-align: center; margin-top: 10px; background: white; }
+th, td { border: 1px solid #d1d5db; padding: 8px; }
+th { background-color: #e5e7eb; font-weight: 600; color: #374151; }
+tr:nth-child(even) { background-color: #f9fafb; }
+tr.final td { background-color: #dcfce7; font-weight: 600; }
+.cell { width: 100%; min-width: 0; border: 1px solid #d1d5db; border-radius: 4px; padding: 6px 4px; text-align: center; font-family: ui-monospace, monospace; font-size: 0.9rem; }
+.cell:focus { outline: none; box-shadow: 0 0 0 2px #3b82f6; }
+.ok { color: #15803d; font-weight: 700; }
+.bad { color: #b91c1c; font-weight: 700; }
+</style>
+</head>
+<body class="text-gray-800 p-4 md:p-8 min-h-screen flex flex-col items-center">
+<div class="max-w-6xl w-full bg-white rounded-xl shadow-lg overflow-hidden">
+
+<div class="bg-blue-700 p-6 text-white text-center">
+    <h1 class="text-3xl font-bold">Linear Systems: Iterative Methods</h1>
+    <p class="mt-2 opacity-90 text-sm">Gauss-Jacobi & Gauss-Seidel</p>
+</div>
+
+<div class="p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+<!-- Inputs -->
+<div class="lg:col-span-1 space-y-5 bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm h-fit">
+    <h2 class="text-xl font-semibold mb-4 border-b pb-2">Inputs</h2>
+
+    <div>
+        <label class="block text-sm font-medium mb-1">Number of equations</label>
+        <select id="sizeSelect" class="w-full border border-gray-300 rounded p-2" onchange="buildGrid(true)">
+            <option value="2">2 × 2</option>
+            <option value="3" selected>3 × 3</option>
+            <option value="4">4 × 4</option>
+            <option value="5">5 × 5</option>
+        </select>
+    </div>
+
+    <div>
+        <label class="block text-sm font-medium mb-1">Coefficients and right-hand side</label>
+        <div id="matrixGrid" class="space-y-1"></div>
+        <p class="text-xs text-gray-500 mt-2">Each row is one equation. Write the coefficient of every unknown (0 if it is missing).</p>
+    </div>
+
+    <div>
+        <label class="block text-sm font-medium mb-1">Initial guess</label>
+        <input type="text" id="guessInput" value="0, 0, 0" class="w-full border border-gray-300 rounded p-2 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none">
+    </div>
+
+    <div>
+        <label class="block text-sm font-medium mb-1">Method</label>
+        <select id="methodSelect" class="w-full border border-gray-300 rounded p-2">
+            <option value="jacobi">Gauss-Jacobi</option>
+            <option value="seidel">Gauss-Seidel</option>
+            <option value="both">Compare both</option>
+        </select>
+    </div>
+
+    <div class="bg-blue-50 p-3 rounded border border-blue-100 space-y-2">
+        <label class="block text-sm font-medium text-blue-800">Stop when</label>
+        <select id="stopSelect" class="w-full border border-gray-300 rounded p-2" onchange="updateStop()">
+            <option value="fixed">A fixed number of iterations is done</option>
+            <option value="tol">The change is smaller than ε</option>
+        </select>
+        <div id="fixedBox">
+            <label class="block text-sm font-medium mb-1">Number of iterations</label>
+            <input type="number" id="iterInput" value="5" min="1" max="200" class="w-full border border-gray-300 rounded p-2">
+        </div>
+        <div id="tolBox" class="hidden grid grid-cols-2 gap-3">
+            <div>
+                <label class="block text-sm font-medium mb-1">ε</label>
+                <input type="number" id="tolInput" value="0.0005" step="any" min="0" class="w-full border border-gray-300 rounded p-2">
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1">Max iterations</label>
+                <input type="number" id="maxInput" value="50" min="1" max="500" class="w-full border border-gray-300 rounded p-2">
+            </div>
+            <p class="col-span-2 text-xs text-blue-600 font-medium">Stops when max |x<sup>(k+1)</sup> − x<sup>(k)</sup>| &lt; ε for every unknown.</p>
+        </div>
+    </div>
+
+    <div>
+        <label class="block text-sm font-medium mb-1">Decimal places shown</label>
+        <input type="number" id="decInput" value="3" min="1" max="10" class="w-full border border-gray-300 rounded p-2">
+    </div>
+
+    <button onclick="solve()" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 px-4 rounded transition duration-200 shadow">Solve</button>
+    <div id="errorBox" class="hidden mt-4 p-3 bg-red-100 text-red-700 rounded text-sm font-medium border border-red-200"></div>
+</div>
+
+<!-- Results -->
+<div class="lg:col-span-2 space-y-6">
+    <div id="resultsContainer" class="hidden">
+        <h2 class="text-xl font-semibold mb-4 border-b pb-2">Step-by-Step Solution</h2>
+
+        <div class="mb-5">
+            <h3 class="font-medium text-gray-700 mb-2">1. The system:</h3>
+            <div id="systemTex" class="bg-white p-3 rounded border shadow-sm overflow-x-auto text-lg"></div>
+        </div>
+
+        <div class="mb-5">
+            <h3 class="font-medium text-gray-700 mb-2">2. Convergence check (diagonal dominance):</h3>
+            <div id="dominanceBox" class="bg-white p-3 rounded border shadow-sm overflow-x-auto"></div>
+        </div>
+
+        <div class="mb-5">
+            <h3 class="font-medium text-gray-700 mb-2">3. Iteration formulas:</h3>
+            <div id="formulaBox" class="space-y-3"></div>
+        </div>
+
+        <div class="mb-5">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <h3 class="font-medium text-gray-700">4. Substitution:</h3>
+                <label class="text-sm text-gray-600">Iteration
+                    <select id="subIter" class="border border-gray-300 rounded p-1 ml-1" onchange="renderSubstitution()"></select>
+                </label>
+            </div>
+            <p class="text-xs text-gray-500 mb-2"><span style="color:#1d4ed8;font-weight:600">Blue</span> = values from the previous iteration, <span style="color:#15803d;font-weight:600">green</span> = values already updated in this iteration (Seidel only).</p>
+            <div id="subBox" class="space-y-3"></div>
+        </div>
+
+        <div class="mb-5">
+            <h3 class="font-medium text-gray-700 mb-2">5. Iterations table:</h3>
+            <div id="tableBox" class="grid grid-cols-1 gap-4"></div>
+        </div>
+
+        <div>
+            <h3 class="font-medium text-gray-700 mb-2">6. Final answer:</h3>
+            <div id="finalAnswer" class="bg-green-50 p-4 rounded border border-green-200 text-green-900 shadow-sm"></div>
+        </div>
+    </div>
+
+    <div id="placeholderMsg" class="h-full flex items-center justify-center text-gray-400 italic text-center p-10 border-2 border-dashed rounded-xl bg-gray-50">
+        Enter the system and click "Solve" to see the convergence check, the iteration formulas, colored substitutions and the iterations table.
+    </div>
+</div>
+</div>
+
+<div id="graphContainer" class="hidden p-6 md:p-8 border-t border-gray-200 bg-white">
+    <h2 id="graphTitle" class="text-xl font-semibold mb-2">Convergence Graph</h2>
+    <p id="graphNote" class="text-sm text-gray-500 mb-4"></p>
+    <div class="relative h-96 w-full bg-gray-50 rounded border shadow-inner p-2">
+        <canvas id="iterChart"></canvas>
+    </div>
+</div>
+
+</div>
+
+<script>
+// ---------- defaults: Worksheet system (original order, not dominant) ----------
+const DEFAULTS = {
+    2: { A: [[4, 1], [2, 5]], b: [9, 13] },
+    3: { A: [[2, -6, -1], [-3, -1, 7], [-8, 1, -2]], b: [-38, -34, -20] },
+    4: { A: [[10, -1, 2, 0], [-1, 11, -1, 3], [2, -1, 10, -1], [0, 3, -1, 8]], b: [6, 25, -11, 15] },
+    5: { A: [[10, 1, 1, 1, 1], [1, 10, 1, 1, 1], [1, 1, 10, 1, 1], [1, 1, 1, 10, 1], [1, 1, 1, 1, 10]], b: [14, 14, 14, 14, 14] }
+};
+const C_OLD = '#1d4ed8', C_NEW = '#15803d', C_RES = '#b91c1c';
+let myChart = null;
+let LAST = null;   // results of the last solve, used by the substitution selector
+
+function n() { return parseInt(document.getElementById('sizeSelect').value); }
+function varNames(m) { return m <= 3 ? ['x', 'y', 'z'].slice(0, m) : Array.from({ length: m }, (_, i) => `x_{${i + 1}}`); }
+function varHtml(m) { return m <= 3 ? ['x', 'y', 'z'].slice(0, m) : Array.from({ length: m }, (_, i) => `x<sub>${i + 1}</sub>`); }
+function dec() { const d = parseInt(document.getElementById('decInput').value); return isNaN(d) ? 3 : Math.min(Math.max(d, 1), 10); }
+function fmt(v, d = dec()) {
+    if (!isFinite(v)) return String(v);
+    let s = v.toFixed(d);
+    if (/^-0\.0*$/.test(s)) s = s.slice(1);
+    return s;
+}
+function fmtC(v) { return Number.isInteger(v) ? String(v) : String(parseFloat(v.toFixed(6))); }
+function renderMath(el, tex, display = true) {
+    if (typeof el === 'string') el = document.getElementById(el);
+    katex.render(tex, el, { throwOnError: false, displayMode: display });
+}
+function showError(msg) {
+    const b = document.getElementById('errorBox');
+    b.textContent = msg; b.style.display = 'block';
+    document.getElementById('resultsContainer').classList.add('hidden');
+    document.getElementById('graphContainer').classList.add('hidden');
+    document.getElementById('placeholderMsg').classList.remove('hidden');
+}
+function hideError() { document.getElementById('errorBox').style.display = 'none'; }
+function updateStop() {
+    const tol = document.getElementById('stopSelect').value === 'tol';
+    document.getElementById('fixedBox').classList.toggle('hidden', tol);
+    document.getElementById('tolBox').classList.toggle('hidden', !tol);
+}
+
+// ---------- matrix input grid ----------
+function buildGrid(useDefaults, A = null, b = null) {
+    const m = n();
+    if (useDefaults) { A = DEFAULTS[m].A; b = DEFAULTS[m].b; }
+    const names = varHtml(m);
+    const g = document.getElementById('matrixGrid');
+    const cols = `grid-template-columns: repeat(${m}, minmax(0,1fr)) 14px minmax(0,1fr);`;
+    let html = `<div class="grid gap-1 text-xs font-semibold text-gray-500 text-center" style="${cols}">`;
+    names.forEach(v => html += `<div>${v}</div>`);
+    html += `<div></div><div>b</div></div>`;
+    for (let i = 0; i < m; i++) {
+        html += `<div class="grid gap-1 items-center" style="${cols}">`;
+        for (let j = 0; j < m; j++) html += `<input class="cell" id="a${i}${j}" inputmode="decimal" value="${A ? A[i][j] : 0}">`;
+        html += `<div class="text-center text-gray-500">=</div><input class="cell" id="b${i}" inputmode="decimal" value="${b ? b[i] : 0}">`;
+        html += `</div>`;
+    }
+    g.innerHTML = html;
+    if (useDefaults) document.getElementById('guessInput').value = Array(m).fill(0).join(', ');
+}
+
+function readSystem() {
+    const m = n(), A = [], b = [];
+    for (let i = 0; i < m; i++) {
+        A.push([]);
+        for (let j = 0; j < m; j++) {
+            const v = parseFloat(document.getElementById(`a${i}${j}`).value);
+            if (isNaN(v)) throw `Row ${i + 1}, column ${j + 1} is not a number.`;
+            A[i].push(v);
+        }
+        const bv = parseFloat(document.getElementById(`b${i}`).value);
+        if (isNaN(bv)) throw `The right-hand side of row ${i + 1} is not a number.`;
+        b.push(bv);
+    }
+    const g = document.getElementById('guessInput').value.trim().split(/[\s,]+/).filter(s => s !== '').map(Number);
+    if (g.length !== m || g.some(isNaN)) throw `The initial guess needs exactly ${m} numbers, separated by commas.`;
+    return { A, b, x0: g };
+}
+
+// ---------- diagonal dominance ----------
+function dominance(A) {
+    const rows = A.map((r, i) => {
+        const diag = Math.abs(r[i]);
+        const off = r.reduce((s, v, j) => j === i ? s : s + Math.abs(v), 0);
+        return { diag, off, strict: diag > off, weak: diag >= off };
+    });
+    const status = rows.every(r => r.strict) ? 'strict' : (rows.every(r => r.weak) && rows.some(r => r.strict) ? 'weak' : 'none');
+    return { rows, status };
+}
+function permutations(arr) {
+    if (arr.length <= 1) return [arr];
+    const out = [];
+    arr.forEach((v, i) => permutations(arr.filter((_, j) => j !== i)).forEach(p => out.push([v, ...p])));
+    return out;
+}
+function findReorder(A) {
+    let weak = null;
+    for (const p of permutations([...A.keys()])) {
+        const d = dominance(p.map(i => A[i]));
+        if (d.status === 'strict') return p;
+        if (d.status === 'weak' && !weak) weak = p;
+    }
+    return weak;
+}
+function applyReorder(perm) {
+    const { A, b } = readSystem();
+    buildGrid(false, perm.map(i => A[i]), perm.map(i => b[i]));
+    solve();
+}
+
+// ---------- iterations ----------
+function iterate(A, b, x0, method, stop) {
+    const m = A.length;
+    let x = x0.slice();
+    const hist = [{ x: x.slice(), prev: null, change: null }];
+    let status = 'fixed';
+    const maxIt = stop.mode === 'fixed' ? stop.N : stop.max;
+    for (let k = 1; k <= maxIt; k++) {
+        const prev = x.slice();
+        const nx = method === 'jacobi' ? new Array(m) : x;
+        for (let i = 0; i < m; i++) {
+            let s = b[i];
+            for (let j = 0; j < m; j++) if (j !== i) s -= A[i][j] * (method === 'jacobi' ? prev[j] : nx[j]);
+            nx[i] = s / A[i][i];
+        }
+        x = nx.slice();
+        const change = Math.max(...x.map((v, i) => Math.abs(v - prev[i])));
+        hist.push({ x: x.slice(), prev, change });
+        if (x.some(v => !isFinite(v) || Math.abs(v) > 1e12)) { status = 'diverged'; break; }
+        if (stop.mode === 'tol' && change < stop.eps) { status = 'converged'; break; }
+        if (stop.mode === 'tol' && k === maxIt) status = 'maxed';
+    }
+    return { hist, status };
+}
+
+// ---------- TeX builders ----------
+function systemTex(A, b) {
+    const names = varNames(A.length);
+    const rows = A.map((r, i) => {
+        let s = '', first = true;
+        r.forEach((c, j) => {
+            if (c === 0) return;
+            const sign = c < 0 ? '-' : (first ? '' : '+');
+            const a = Math.abs(c) === 1 ? '' : fmtC(Math.abs(c));
+            s += `${first ? (c < 0 ? '-' : '') : ` ${sign} `}${a}${names[j]}`;
+            first = false;
+        });
+        return `${s || '0'} &= ${fmtC(b[i])}`;
+    });
+    return String.raw`\begin{aligned}` + rows.join(String.raw`\\`) + String.raw`\end{aligned}`;
+}
+
+// row i formula; valueOf(j) returns TeX for the j-th unknown, or null to use symbols
+function rowFormula(A, b, i, method, valueOf) {
+    const names = varNames(A.length);
+    const s = A[i][i] < 0 ? -1 : 1;          // keep the denominator positive, like on paper
+    let num = fmtC(s * b[i]);
+    A[i].forEach((c, j) => {
+        if (j === i || c === 0) return;
+        const coef = -c * s;
+        const sign = coef < 0 ? '-' : '+';
+        const isNew = method === 'seidel' && j < i;
+        let term;
+        if (valueOf) {
+            term = (Math.abs(coef) === 1 ? '' : fmtC(Math.abs(coef))) + valueOf(j, isNew);
+        } else {
+            const sym = `${names[j]}^{(k${isNew ? '+1' : ''})}`;
+            const t = (Math.abs(coef) === 1 ? '' : fmtC(Math.abs(coef))) + sym;
+            term = isNew ? String.raw`\textcolor{${C_NEW}}{${t}}` : t;
+        }
+        num += ` ${sign} ${term}`;
+    });
+    return String.raw`\dfrac{${num}}{${fmtC(Math.abs(A[i][i]))}}`;
+}
+
+function formulasTex(A, b, method) {
+    const names = varNames(A.length);
+    return String.raw`\begin{aligned}` + A.map((_, i) =>
+        `${names[i]}^{(k+1)} &= ${rowFormula(A, b, i, method, null)}`).join(String.raw`\\[6pt]`) + String.raw`\end{aligned}`;
+}
+
+function generalTex(method) {
+    return method === 'jacobi'
+        ? String.raw`x_i^{(k+1)} = \frac{1}{a_{ii}}\Big(b_i - \sum_{j\ne i} a_{ij}\,x_j^{(k)}\Big)`
+        : String.raw`x_i^{(k+1)} = \frac{1}{a_{ii}}\Big(b_i - \sum_{j<i} a_{ij}\,\textcolor{${C_NEW}}{x_j^{(k+1)}} - \sum_{j>i} a_{ij}\,x_j^{(k)}\Big)`;
+}
+
+const METHOD_NAME = { jacobi: 'Gauss-Jacobi', seidel: 'Gauss-Seidel' };
+
+// ---------- main ----------
+function solve() {
+    hideError();
+    let sys;
+    try { sys = readSystem(); } catch (e) { showError(e); return; }
+    const { A, b, x0 } = sys;
+    const m = A.length;
+    const zeroDiag = A.findIndex((r, i) => r[i] === 0);
+
+    const stopMode = document.getElementById('stopSelect').value;
+    const stop = stopMode === 'fixed'
+        ? { mode: 'fixed', N: Math.max(1, parseInt(document.getElementById('iterInput').value) || 5) }
+        : { mode: 'tol', eps: Math.abs(parseFloat(document.getElementById('tolInput').value)) || 0.0005,
+            max: Math.max(1, parseInt(document.getElementById('maxInput').value) || 50) };
+    const methodSel = document.getElementById('methodSelect').value;
+    const methods = methodSel === 'both' ? ['jacobi', 'seidel'] : [methodSel];
+
+    // 1. system
+    renderMath('systemTex', systemTex(A, b));
+
+    // 2. dominance
+    const dom = dominance(A);
+    const names = varHtml(m);
+    let dh = `<table><tr><th>Row</th><th>|a<sub>ii</sub>|</th><th>Σ |other coefficients|</th><th></th></tr>`;
+    dom.rows.forEach((r, i) => {
+        const others = A[i].map((v, j) => j === i ? null : fmtC(Math.abs(v))).filter(v => v !== null).join(' + ');
+        dh += `<tr><td>${i + 1}</td><td>${fmtC(r.diag)}</td><td>${others} = ${fmtC(r.off)}</td>
+               <td class="${r.strict ? 'ok' : (r.weak ? '' : 'bad')}">${r.strict ? '&gt; ✓' : (r.weak ? '=' : '&lt; ✗')}</td></tr>`;
+    });
+    dh += `</table>`;
+    if (dom.status === 'strict') {
+        dh += `<p class="mt-3 text-sm ok">Strictly diagonally dominant, so both methods are guaranteed to converge.</p>`;
+    } else if (dom.status === 'weak') {
+        dh += `<p class="mt-3 text-sm text-amber-700 font-semibold">Diagonally dominant (with equality in some rows). Convergence is likely but not guaranteed.</p>`;
+    } else {
+        const perm = findReorder(A);
+        dh += `<p class="mt-3 text-sm bad">Not diagonally dominant in this order. The iterations may diverge.</p>`;
+        if (perm) {
+            const order = perm.map(i => i + 1).join(', ');
+            dh += `<div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded text-sm">
+                Reordering the equations as rows <b>${order}</b> makes the system diagonally dominant.
+                <button onclick='applyReorder(${JSON.stringify(perm)})' class="ml-2 mt-2 md:mt-0 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-1 px-3 rounded">Reorder and solve</button>
+            </div>`;
+        } else {
+            dh += `<p class="mt-2 text-sm text-gray-600">No reordering of the equations makes it diagonally dominant, so convergence is not guaranteed.</p>`;
+        }
+    }
+    document.getElementById('dominanceBox').innerHTML = dh;
+
+    if (zeroDiag >= 0) {
+        showError(`Row ${zeroDiag + 1} has a zero on the diagonal, so it cannot be divided by a${zeroDiag + 1}${zeroDiag + 1}. Reorder the equations first.`);
+        document.getElementById('resultsContainer').classList.remove('hidden');
+        document.getElementById('placeholderMsg').classList.add('hidden');
+        return;
+    }
+
+    // 3. formulas
+    const fb = document.getElementById('formulaBox');
+    fb.innerHTML = '';
+    methods.forEach(meth => {
+        const card = document.createElement('div');
+        card.className = 'bg-white p-3 rounded border shadow-sm overflow-x-auto';
+        card.innerHTML = `<div class="font-semibold ${meth === 'jacobi' ? 'text-blue-700' : 'text-green-700'} mb-1">${METHOD_NAME[meth]}</div>
+            <div class="gen text-gray-600"></div><div class="spec text-lg"></div>`;
+        fb.appendChild(card);
+        renderMath(card.querySelector('.gen'), generalTex(meth));
+        renderMath(card.querySelector('.spec'), formulasTex(A, b, meth));
+    });
+
+    // run
+    const runs = {};
+    methods.forEach(meth => runs[meth] = iterate(A, b, x0, meth, stop));
+    LAST = { A, b, runs, methods };
+
+    // 4. substitution selector
+    const maxK = Math.max(...methods.map(mm => runs[mm].hist.length - 1));
+    const sel = document.getElementById('subIter');
+    sel.innerHTML = '';
+    for (let k = 1; k <= maxK; k++) sel.innerHTML += `<option value="${k}">${k}</option>`;
+    renderSubstitution();
+
+    // 5. tables
+    const tb = document.getElementById('tableBox');
+    tb.className = methods.length > 1 ? 'grid grid-cols-1 xl:grid-cols-2 gap-4' : 'grid grid-cols-1 gap-4';
+    tb.innerHTML = '';
+    methods.forEach(meth => {
+        const { hist } = runs[meth];
+        let t = `<div class="overflow-x-auto"><div class="font-semibold ${meth === 'jacobi' ? 'text-blue-700' : 'text-green-700'}">${METHOD_NAME[meth]}</div>
+                 <table><tr><th>k</th>${names.map(v => `<th>${v}<sup>(k)</sup></th>`).join('')}<th>max |change|</th></tr>`;
+        hist.forEach((h, k) => {
+            t += `<tr class="${k === hist.length - 1 ? 'final' : ''}"><td>${k}</td>${h.x.map(v => `<td>${fmt(v)}</td>`).join('')}
+                  <td>${h.change === null ? '—' : fmt(h.change, Math.max(dec() + 1, 4))}</td></tr>`;
+        });
+        t += `</table></div>`;
+        tb.innerHTML += t;
+    });
+
+    // 6. final
+    let fa = '';
+    methods.forEach(meth => {
+        const { hist, status } = runs[meth];
+        const last = hist[hist.length - 1];
+        const its = hist.length - 1;
+        const msg = {
+            fixed: `after ${its} iteration${its > 1 ? 's' : ''}`,
+            converged: `converged after ${its} iteration${its > 1 ? 's' : ''} (change &lt; ${stop.eps})`,
+            maxed: `did not reach ε within ${its} iterations`,
+            diverged: `diverged: the values grow without limit. Try reordering the equations.`
+        }[status];
+        fa += `<div class="mb-2"><span class="font-bold ${meth === 'jacobi' ? 'text-blue-800' : 'text-green-800'}">${METHOD_NAME[meth]}</span>
+               <span class="text-sm text-gray-600">: ${msg}</span>
+               <div class="text-xl font-bold mt-1">${status === 'diverged' ? '—' : names.map((v, i) => `${v} ≈ ${fmt(last.x[i])}`).join(', &nbsp; ')}</div></div>`;
+    });
+    if (methods.length > 1 && stop.mode === 'tol' && runs.jacobi.status === 'converged' && runs.seidel.status === 'converged') {
+        fa += `<p class="text-sm mt-2 text-gray-700">Gauss-Seidel needed ${runs.seidel.hist.length - 1} iterations, Gauss-Jacobi needed ${runs.jacobi.hist.length - 1}.</p>`;
+    }
+    document.getElementById('finalAnswer').innerHTML = fa;
+
+    document.getElementById('resultsContainer').classList.remove('hidden');
+    document.getElementById('placeholderMsg').classList.add('hidden');
+    drawGraph(runs, methods, m);
+}
+
+function renderSubstitution() {
+    if (!LAST) return;
+    const { A, b, runs, methods } = LAST;
+    const k = parseInt(document.getElementById('subIter').value);
+    const names = varNames(A.length);
+    const box = document.getElementById('subBox');
+    box.innerHTML = '';
+    methods.forEach(meth => {
+        const hist = runs[meth].hist;
+        const card = document.createElement('div');
+        card.className = 'bg-white p-3 rounded border shadow-sm overflow-x-auto';
+        if (k >= hist.length) {
+            card.innerHTML = `<div class="font-semibold mb-1">${METHOD_NAME[meth]}</div><p class="text-sm text-gray-500">Stopped before iteration ${k}.</p>`;
+            box.appendChild(card); return;
+        }
+        const { prev, x } = hist[k];
+        const lines = A.map((_, i) => {
+            const f = rowFormula(A, b, i, meth, (j, isNew) =>
+                isNew ? String.raw`\textcolor{${C_NEW}}{(${fmt(x[j])})}` : String.raw`\textcolor{${C_OLD}}{(${fmt(prev[j])})}`);
+            return `${names[i]}^{(${k})} &= ${f} = \\textcolor{${C_RES}}{\\mathbf{${fmt(x[i])}}}`;
+        });
+        card.innerHTML = `<div class="font-semibold ${meth === 'jacobi' ? 'text-blue-700' : 'text-green-700'} mb-1">${METHOD_NAME[meth]}: iteration ${k}</div><div class="tex text-lg"></div>`;
+        box.appendChild(card);
+        renderMath(card.querySelector('.tex'), String.raw`\begin{aligned}` + lines.join(String.raw`\\[6pt]`) + String.raw`\end{aligned}`);
+    });
+}
+
+// ---------- graph ----------
+const PALETTE = ['#1d4ed8', '#dc2626', '#16a34a', '#9333ea', '#ea580c'];
+function drawGraph(runs, methods, m) {
+    document.getElementById('graphContainer').classList.remove('hidden');
+    const ctx = document.getElementById('iterChart').getContext('2d');
+    if (myChart) myChart.destroy();
+    const names = m <= 3 ? ['x', 'y', 'z'].slice(0, m) : Array.from({ length: m }, (_, i) => `x${i + 1}`);
+
+    if (methods.length === 1) {
+        const hist = runs[methods[0]].hist;
+        document.getElementById('graphTitle').textContent = 'How the unknowns settle down';
+        document.getElementById('graphNote').textContent = 'Each line is one unknown. When the lines become flat, the values have stopped changing and the iterations have converged.';
+        myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: hist.map((_, k) => k),
+                datasets: names.map((v, i) => ({
+                    label: v, data: hist.map(h => h.x[i]), borderColor: PALETTE[i], backgroundColor: PALETTE[i],
+                    borderWidth: 2.5, pointRadius: 4, tension: 0
+                }))
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { x: { title: { display: true, text: 'iteration k' } }, y: { title: { display: true, text: 'value' } } },
+                plugins: { legend: { position: 'top' } }
+            }
+        });
+    } else {
+        const len = Math.max(...methods.map(mm => runs[mm].hist.length));
+        document.getElementById('graphTitle').textContent = 'Which method settles down faster?';
+        document.getElementById('graphNote').textContent = 'The largest change between two iterations. Each grid line down is 10 times smaller. The line that drops faster converges faster.';
+        myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array.from({ length: len - 1 }, (_, i) => i + 1),
+                datasets: methods.map(meth => ({
+                    label: METHOD_NAME[meth],
+                    data: runs[meth].hist.slice(1).map(h => h.change > 0 ? h.change : null),
+                    borderColor: meth === 'jacobi' ? '#1d4ed8' : '#16a34a',
+                    backgroundColor: meth === 'jacobi' ? '#1d4ed8' : '#16a34a',
+                    borderWidth: 2.5, pointRadius: 4, tension: 0
+                }))
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    x: { title: { display: true, text: 'iteration k' } },
+                    y: {
+                        type: 'logarithmic', title: { display: true, text: 'largest change' },
+                        ticks: {
+                            callback: v => {
+                                const p = Math.log10(v);
+                                if (Math.abs(p - Math.round(p)) > 1e-9) return null;
+                                return p >= 0 ? String(Math.round(v)) : v.toFixed(-Math.round(p));
+                            }
+                        }
+                    }
+                },
+                plugins: { legend: { position: 'top' } }
+            }
+        });
+    }
+}
+
+buildGrid(true);
+updateStop();
+</script>
+</body>
+</html>
